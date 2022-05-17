@@ -1,18 +1,19 @@
 from asyncio.log import logger
-from multiprocessing.sharedctypes import Value
-from optparse import Values
-from urllib.request import HTTPBasicAuthHandler
 import streamlit as st
 from logging import getLogger
 import numpy as np
 import pandas as pd
-# from polygon import RESTClient
 import datetime as dt
 import requests
 import json
 
+st.set_page_config(layout="wide")
+
+default_load = True
+#Token
 loggers =  getLogger()
 
+#Start of API Credentials
 ALPACA_API_KEY = 'tpHEpdlolUR703YTAdrvOHaUMW6PEDPw' #os.environ.get('ALPACA_API_KEY')
 # URL for all the tickers on Polygon
 # POLYGON_TICKERS_URL = 'https://api.polygon.io/v2/reference/tickers?page={}&apiKey={}'
@@ -25,7 +26,9 @@ POLYGON_DIV_URL = 'https://api.polygon.io/v2/reference/dividends/{}?apiKey={}'
 POLYGON_SPLIT_URL = 'https://api.polygon.io/v2/reference/splits/{}?apiKey={}'
 #URL FOR TICKER TYPES
 POLYGON_TYPES_URL = 'https://api.polygon.io/v2/reference/types?apiKey={}'
+#End of API Credentials
 
+#Start of Polygon API Code
 class polygon_api:
     '''Authorization: Bearer tpHEpdlolUR703YTAdrvOHaUMW6PEDPw
     'https://api.polygon.io/v2/aggs/ticker/AAPL/range/1/day/2020-06-01/2020-06-17?apiKey=tpHEpdlolUR703YTAdrvOHaUMW6PEDPw'
@@ -97,7 +100,7 @@ class polygon_api:
                     stock_details = (f'No Data Found For  {stocksTicker}',[])
                     return stock_details
             else:
-                stock_details = (f'No Data Found For  {stocksTicker}',[])
+                stock_details = (f'Maximum limit of API Call is Reached.',[])
                 return stock_details
         except Exception as e:
             logger.error(f'get_aggregate : Except block Call {e}')
@@ -134,19 +137,87 @@ class polygon_api:
         '''this method is convert timestamp to data time formate''' 
         try:
             # logger.info(f'get_date : try block call {created}')
-            return dt.datetime.fromtimestamp((created/1000))
+            return dt.datetime.fromtimestamp((created/1000)).strftime('%Y-%m')
         except Exception as e:
             logger.info(f'get_date : exception block call { e} ')
+#End of Polygon API Code
 
 
+def stock_details_fun(stock_details):
+    # display the details of stock 
+    st.subheader(f'{stock_details[0]} Stock Data')
+    st.write(stock_details[1])
+
+    # line chart for open
+    st.subheader(f'{stock_details[0]} Open stock price data')
+    df = pd.DataFrame({
+    'date': stock_details[1]['date'],
+    'open stock_price': stock_details[1]['open']
+    })
+    df = df.rename(columns={'date':'index'}).set_index('index')
+    st.line_chart(df)
+
+    # line chart for close
+    st.subheader(f'{stock_details[0]} Close stock price data')
+    df = pd.DataFrame({
+    'date': stock_details[1]['date'],
+    'close stock_price': stock_details[1]['close']
+    })
+    df = df.rename(columns={'date':'index'}).set_index('index')
+    st.line_chart(df)
+
+    # Multiple Line chart for high and low stock_price
+    st.subheader(f'{stock_details[0]} High and Low stock price data')
+    df = pd.DataFrame({
+    'date': stock_details[1]['date'],
+    'low stock_price': stock_details[1]['low'],
+    'high stock_price': stock_details[1]['high']
+    })
+    df = df.rename(columns={'date':'index'}).set_index('index')
+    chart_data = df
+    st.line_chart(chart_data)
+    
+    #Bar Chart
+    st.header(f"No of transactions by month")
+    df = pd.DataFrame({
+    'date': stock_details[1]['date'],
+    'num of transactions': stock_details[1]['no_of_trans']
+    })
+    df = df.rename(columns={'date':'index'}).set_index('index')
+    chart_data = df
+    st.bar_chart(chart_data)
+
+    # #Pie chart
+    # stock_details = aggreget_api.get_aggregate(stock_details[0].upper(),1,'year','2018-01-01',todays_date)
+    # labels = stock_details[1]['date']
+    # sizes = stock_details[1]['volume']
+    # fig, ax = plt.subplots(figsize=(2,2))
+    # ax.pie(sizes, labels=labels, autopct="%1.1f%%")
+    # ax.axis("equal")
+    # st.pyplot(fig)
+
+
+title_col1,title_col2,title_col3 = st.columns([3,4,2])
+with title_col1:
+    pass
+with title_col2:
+    st.markdown("""# *Finance Data Analysis*""")
+with title_col3:
+    pass
+
+#Start of Ticker list defult data  
 aggreget_api = polygon_api()
 
 # Get List of Ticker
-# ticker_list = aggreget_api.get_tickers()
+# ticker_list = aggreget_api.get_tickers()  #drirect api call for get ticker list
 ticker_list = pd.read_csv("data/tickers/tickerlist.csv")
+#Get useable data from csv
+updated_ticker_list = ticker_list.iloc[:, 0:8]
 # Display List of Ticker
 st.subheader(f'Ticker List')
-st.write(ticker_list)
+st.write(updated_ticker_list)
+
+
 
 # get list of ticker and name
 ticker_dd = ticker_list[['name','ticker']]
@@ -155,33 +226,29 @@ combine_ticker_name = ticker_dd['ticker'].str.cat(ticker_dd[['name']], sep='-')
 # get the index of AAPL ticker or default load
 default_ix = combine_ticker_name.tolist().index('AAPL-Apple Inc.')
 stock_details = []
-
 todays_date = dt.datetime.now().date() 
 
+#Start of search
 def getTickerdetails(ticker_name):
     if(ticker_name):
         logger.info('getTickerdetails : if Condition BEFOR SPLIT called tikker Name {}'.format(ticker_name))
         ticker_value = ticker_name.split('-')
         ticker_name = ticker_value[0]
 
-        # getTickerdetails(ticker_value[0])
         logger.info('getTickerdetails : if Condition called tikker Name {}'.format(ticker_name))
-        stock_details = aggreget_api.get_aggregate(ticker_name.upper(),1,'day','2021-01-01',todays_date)
+        stock_details = aggreget_api.get_aggregate(ticker_name.upper(),1,'month','2021-01-01',todays_date)
 
         if len(stock_details[1]) > 0:
-            # display the details of stock 
-            st.subheader(f'{stock_details[0]} Stock Data')
-            st.write(stock_details[1])
+            stock_details_fun(stock_details)
 
-            # line chart
-            st.subheader(f'{stock_details[0]}stock price Open data')
-            st.line_chart(stock_details[1].open)
         else:
             st.warning(f' {stock_details[0]}')
     else:
         logger.info('getTickerdetails : else Condition called tikker Name {}'.format(ticker_name))
         st.warning('Please Enter Tickker Name')
+#End of search
 
+#start of select box,text box, and search button design
 col1,col2,col3 = st.columns([1,1,1])
 with col1:
     # Create Select box
@@ -192,23 +259,16 @@ with col2:
 if ticker_txt_Name:
     ticker_name = ticker_txt_Name
 if st.button('Search'):
-     getTickerdetails(ticker_name)
-# st.button('Submit',on_click=getTickerdetails(ticker_name),key='btn_ticker_submit')
+    getTickerdetails(ticker_name)
+    default_load = False
+else:
+    stock_details_from_csv = pd.read_csv("data/stockdetails/AAPL.csv")
+    # logger.info(stock_details_from_csv)
+    # stock_details = pd.DataFrame(stock_details_from_csv)
 
-# # Check if Ticker name is selected or not
-# if ticker_name :
-#     # split ticker and name for get ticker
-#     ticker_value = ticker_name.split('-')
+    stock_details_def = ('APPL',stock_details_from_csv)
+    logger.info(stock_details_def)
+    stock_details_fun(stock_details_def)
+    #end of select box,text box, and search button design
 
-#     getTickerdetails(ticker_value[0])
-    # Call the aggregate method for get the detail of stock 
-    # stock_details = aggreget_api.get_aggregate(ticker_value[0],1,'day','2021-01-01',todays_date)
-
-# # display the details of stock 
-# st.subheader(f'{stock_details[0]} Stock Data')
-# st.write(stock_details[1])
-
-# # line chart
-# st.subheader(f'{stock_details[0]}stock price Open data')
-# st.line_chart(stock_details[1].open)
-
+    
